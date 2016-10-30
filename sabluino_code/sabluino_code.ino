@@ -2,7 +2,6 @@
 // Beeping the last 5 LEDS
 // Start sequence animation
 // NOISOMETER
-// Disable during week-ends
 // DEMO: set a sequence in particular
 // Facilitate upgrade lcd routine to include text messages and refresh at a given rate
 
@@ -224,7 +223,7 @@ void loop(void)
        UpdateTime(now,-9999);
      }
     
-     if(now_seconds>=start_time_1_seconds & now_seconds<end_time_1_seconds-5){
+     if(now_seconds>=start_time_1_seconds & now_seconds<end_time_1_seconds-5 & daysOfTheWeek[now.dayOfTheWeek()]!="Sun" & daysOfTheWeek[now.dayOfTheWeek()]!="Sat"){
        condition=Count_down;    
        wait_time=20;
        //wait_time=2;
@@ -236,7 +235,7 @@ void loop(void)
        break;
      }
      
-     if(now_seconds>=start_time_2_seconds & now_seconds<end_time_2_seconds-5){
+     if(now_seconds>=start_time_2_seconds & now_seconds<end_time_2_seconds-5 & daysOfTheWeek[now.dayOfTheWeek()]!="Sun" & daysOfTheWeek[now.dayOfTheWeek()]!="Sat"){
        condition=Count_down;  
        wait_time=20;
        Beep(2000,440,200);Beep(600,880,200);

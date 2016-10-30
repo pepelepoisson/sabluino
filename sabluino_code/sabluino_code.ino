@@ -27,7 +27,14 @@ long start_hour_2=18, start_minute_2=40, start_second_2=0, end_hour_2=19, end_mi
 int current_second = 0;  // Used to check frequency of time update on LCD
 long now_seconds, end_seconds, remaining_seconds, change_time=0;  // now in seconds since 00:00:00, end time in seconds, count down of remain seconds
 float seconds_between_drops;
-static uint8_t hue = 100;
+static uint8_t default_hue=50;
+static uint8_t hue = default_hue;
+/*
+ * 50=yellow
+ * 100=green
+ * 160=blue
+ * 0=red
+ */
 static uint8_t hue_step = 24;
 static uint8_t tail = 180;
 static int step = -1;
@@ -35,6 +42,9 @@ static int pos = NUM_LEDS;
 static int turned_on_leds = 0;
 static double wait_time = 2;
 char daysOfTheWeek[7][12] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
+bool red_button_pressed=0;
+bool green_button_pressed=0;
+bool blue_button_pressed=0;
 
 
 DateTime now;
@@ -205,7 +215,7 @@ void juggle() {
   }
 }
 
-enum {Idle,Count_down_time,Starting,Count_down,Ending,Demo,Noisometer,Adjust_RTC} condition=Idle;
+enum {Idle,Count_down_time,Starting,Count_down,Timer,Ending,Demo,Noisometer,Adjust_RTC} condition=Idle;
 
 void loop(void)
 {
@@ -281,6 +291,7 @@ void loop(void)
        now = RTC.now(); // fetch the time
        now_seconds=long(now.hour())*3600+long(now.minute())*60+long(now.second());
        condition=Count_down;
+       //condition=Timer;
        wait_time=2;
        Beep(600,440,200);Beep(600,880,200);
        remaining_seconds=120;
@@ -293,7 +304,8 @@ void loop(void)
      if(green_button_On){
        now = RTC.now(); // fetch the time
        now_seconds=long(now.hour())*3600+long(now.minute())*60+long(now.second());
-       condition=Count_down;
+       //condition=Count_down;
+       condition=Timer;
        wait_time=2;
        Beep(600,440,200);Beep(600,880,200);
        remaining_seconds=300;
@@ -306,7 +318,8 @@ void loop(void)
      if(blue_button_On){
        now = RTC.now(); // fetch the time
        now_seconds=long(now.hour())*3600+long(now.minute())*60+long(now.second());     
-       condition=Count_down;
+       //condition=Count_down;
+       condition=Timer;
        wait_time=2;
        Beep(600,440,200);Beep(600,880,200);
        remaining_seconds=600;
@@ -316,8 +329,53 @@ void loop(void)
        break;
      }
   break;
+
+case Count_down:
+     now = RTC.now(); // fetch the time
+     // Write to LCD
+     if(now.second()>current_second){
+       current_second=now.second();
+       if(current_second>=59){current_second=0;}
+       remaining_seconds=end_seconds-(now.hour()*3600.0+now.minute()*60.0+now.second());
+       UpdateTime(now,remaining_seconds);
+     }
+     
+     if (remaining_seconds<((NUM_LEDS-turned_on_leds)*seconds_between_drops)){
+       pos = pos + step;
+     }
+
+     if(red_button_On){
+        red_button_pressed=1;
+        hue=0;
+     }
+     if(green_button_On){
+        green_button_pressed=1;
+        hue=100;
+     }
+     if(blue_button_On){
+        blue_button_pressed=1;
+        hue=160;
+     }
+
+     if (pos==turned_on_leds) {
+       pos = NUM_LEDS;
+       turned_on_leds++;
+     }
+
+     leds[pos] = CHSV(hue, 255, 255);
+   
+     FastLED.show();
+     fadeall();
+     if (turned_on_leds>=NUM_LEDS){
+      if(!red_button_pressed | !green_button_pressed | !blue_button_pressed){
+        Beep(1000,440,500);Beep(1000,220,10);
+      }
+      red_button_pressed=0; green_button_pressed=0; blue_button_pressed=0; hue=default_hue;   // Reset buttons and color for next round
+      alloff();condition=Ending;change_time=long(now.hour())*3600+long(now.minute())*60+long(now.second());  }
+     
+break;
     
-  case Count_down:
+case Timer:
      //Serial.println("Count_down");
      now = RTC.now(); // fetch the time
      // Write to LCD
@@ -378,7 +436,7 @@ void loop(void)
      // do some periodic updates
      EVERY_N_MILLISECONDS( 20 ) { gHue++; } // slowly cycle the "base color" through the rainbow
      EVERY_N_SECONDS( 5 ) { Beep(500,440,0); } // Beep periodically
-     if (now_seconds>change_time+60){condition=Idle;alloff();turned_on_leds = 0;pos=NUM_LEDS;current_second = 0;hue = 100; }
+     if (now_seconds>change_time+60){condition=Idle;alloff();turned_on_leds = 0;pos=NUM_LEDS;current_second = 0;hue = default_hue; }
 
      if(blue_button_On){condition=Idle;break;}
      break;

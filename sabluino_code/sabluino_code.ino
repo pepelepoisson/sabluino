@@ -7,6 +7,7 @@
 
 
 #include <Arduino.h>
+#include "RunningMedian.h"
 // Information about hardware connections, functions and definitions
 #include "Definitions.h"
 
@@ -14,13 +15,14 @@
 #define NUM_LEDS 144  // Number of leds in strip
 #define BRIGHTNESS 50  // Set LEDS brightness
 #define FRAMES_PER_SECOND  120
+
 #define ARRAY_SIZE(A) (sizeof(A) / sizeof((A)[0]))
 
 CRGB leds[NUM_LEDS];  // Define the array of leds
 LiquidCrystal_I2C lcd(0x3F, 2, 1, 0, 4, 5, 6, 7, 3, POSITIVE);  // Set the LCD I2C address
 RTC_DS1307 RTC; // define the Real Time Clock object
 
-long start_hour_1=6, start_minute_1=20, start_second_1=0, end_hour_1=7, end_minute_1=30, end_second_1=0, start_time_1_seconds, end_time_1_seconds;
+long start_hour_1=6, start_minute_1=20, start_second_1=0, end_hour_1=7, end_minute_1=40, end_second_1=0, start_time_1_seconds, end_time_1_seconds;
 //long start_hour_1=7, start_minute_1=54, start_second_1=0, end_hour_1=7, end_minute_1=56, end_second_1=0, start_time_1_seconds, end_time_1_seconds;
 long start_hour_2=18, start_minute_2=40, start_second_2=0, end_hour_2=19, end_minute_2=40, end_second_2=0, start_time_2_seconds, end_time_2_seconds;
 
@@ -45,7 +47,9 @@ char daysOfTheWeek[7][12] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
 bool red_button_pressed=0;
 bool green_button_pressed=0;
 bool blue_button_pressed=0;
+int sound_level=0;
 
+RunningMedian SoundLevelSamples = RunningMedian(5);
 
 DateTime now;
 
@@ -76,6 +80,9 @@ void setup(void)
   }
 
   Wire.begin();  // connect to RTC
+  
+  // following line sets the RTC to the date & time this sketch was compiled
+  RTC.adjust(DateTime(F(__DATE__), F(__TIME__)));
   
   FastLED.addLeds<WS2812B, DATA_PIN, GRB>(leds, NUM_LEDS);
   FastLED.setBrightness(BRIGHTNESS);    
@@ -215,7 +222,7 @@ void juggle() {
   }
 }
 
-enum {Idle,Count_down_time,Starting,Count_down,Timer,Ending,Demo,Noisometer,Adjust_RTC} condition=Idle;
+enum {Idle,Count_down_time,Starting,Count_down,Timer,Ending,Demo,Noisometer,QuietPlease,Adjust_RTC} condition=Idle;
 
 void loop(void)
 {
@@ -269,7 +276,14 @@ void loop(void)
 
      if(blue_button_On){
       delay(100);
-      if(!red_button_On){condition=Noisometer; current_second=-1;break;}
+      if(!red_button_On){
+        lcd.clear();
+        lcd.setCursor(0,0);
+        lcd.println("Noisometer         ");
+        condition=Noisometer; 
+        current_second=-1;
+        break;
+      }
       break;
      }
       
@@ -368,7 +382,19 @@ case Count_down:
      fadeall();
      if (turned_on_leds>=NUM_LEDS){
       if(!red_button_pressed | !green_button_pressed | !blue_button_pressed){
-        Beep(1000,440,500);Beep(1000,220,10);
+        // Game over melody
+        for (int i=27;i>=-27;i--){
+          Beep(200,int(440.0*pow(2.0,float(i/12.0))),1);
+        }
+        Beep(3000,int(440.0*pow(2.0,float(-27.0/12.0))),1);
+      }
+      else {
+        // Victory melody
+        Beep(3000,int(440.0*pow(2.0,float(-27.0/12.0))),1);
+        for (int i=-27;i<=27;i++){
+          Beep(200,int(440.0*pow(2.0,float(i/12.0))),1);
+        }
+        Beep(3000,int(440.0*pow(2.0,float(27.0/12.0))),1);
       }
       red_button_pressed=0; green_button_pressed=0; blue_button_pressed=0; hue=default_hue;   // Reset buttons and color for next round
       alloff();condition=Ending;change_time=long(now.hour())*3600+long(now.minute())*60+long(now.second());  }
@@ -435,7 +461,7 @@ case Timer:
 
      // do some periodic updates
      EVERY_N_MILLISECONDS( 20 ) { gHue++; } // slowly cycle the "base color" through the rainbow
-     EVERY_N_SECONDS( 5 ) { Beep(500,440,0); } // Beep periodically
+     //EVERY_N_SECONDS( 5 ) { Beep(500,440,0); } // Beep periodically
      if (now_seconds>change_time+60){condition=Idle;alloff();turned_on_leds = 0;pos=NUM_LEDS;current_second = 0;hue = default_hue; }
 
      if(blue_button_On){condition=Idle;break;}
@@ -470,15 +496,72 @@ case Demo:
      break;
      
   case Noisometer:
-     Serial.println("Noisometer");
-     lcd.clear();
+     //Serial.println("Noisometer");
+     /*lcd.clear();
      lcd.setCursor(0,0);
      lcd.println("Noisometer         ");
      lcd.setCursor(0,1);
      lcd.println("TBD                ");     
      delay(2000);
-     condition=Idle;
+     condition=Idle;  
+     */   
+
+     sound_level=analogRead(mic_analog);
+     SoundLevelSamples.add(sound_level);
+     Serial.println(SoundLevelSamples.getHighest());
+     if (SoundLevelSamples.getHighest()>640){
+       condition=QuietPlease;
+       now = RTC.now();
+       change_time=long(now.hour())*3600+long(now.minute())*60+long(now.second());
+       SoundLevelSamples.clear();
+       
+     }
+     delay(50);
+
+     if(blue_button_On){condition=Idle;break;}
      break;
+     
+case QuietPlease:
+     // Call the pattern function once, updating the 'leds' array
+     bpm();
+     
+     now = RTC.now(); // fetch the time
+     now_seconds=long(now.hour())*3600+long(now.minute())*60+long(now.second());
+     
+     // Write to LCD
+     if(now.second()>current_second){
+       current_second=now.second();
+       if(current_second>=59){current_second=0;}
+       lcd.clear();
+       lcd.setCursor(0,0);
+       lcd.println("*QUIET PLEASE!!*");  
+       lcd.setCursor(0,1);
+       lcd.print("**SILENCE SVP!**");   
+     }
+     
+     // send the 'leds' array out to the actual LED strip
+     FastLED.show();  
+     // insert a delay to keep the framerate modest
+     FastLED.delay(1000/FRAMES_PER_SECOND); 
+
+     // do some periodic updates
+     EVERY_N_MILLISECONDS( 20 ) { gHue++; } // slowly cycle the "base color" through the rainbow
+     //EVERY_N_SECONDS( 5 ) { Beep(500,440,0); } // Beep periodically
+     if (now_seconds>change_time+10){
+       condition=Noisometer;
+       alloff();
+       turned_on_leds = 0;
+       pos=NUM_LEDS;
+       current_second = 0;
+       hue = default_hue;
+       lcd.clear();
+       lcd.setCursor(0,0);
+       lcd.println("Noisometer         "); 
+     }
+
+     if(blue_button_On){condition=Idle;break;}
+     break;
+
      
   case Adjust_RTC:
      Serial.println("Adjust_RTC");

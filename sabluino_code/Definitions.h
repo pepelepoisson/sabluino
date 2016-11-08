@@ -32,7 +32,6 @@ void HardwareSetup () {
   pinMode(red_button,INPUT);
   digitalWrite(red_button, HIGH);  // Apply pull-up resitor 
   pinMode(mic_digital,INPUT);
-  pinMode(mic_analog,INPUT);
 }
 
 

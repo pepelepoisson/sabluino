@@ -22,9 +22,9 @@ CRGB leds[NUM_LEDS];  // Define the array of leds
 LiquidCrystal_I2C lcd(0x3F, 2, 1, 0, 4, 5, 6, 7, 3, POSITIVE);  // Set the LCD I2C address
 RTC_DS1307 RTC; // define the Real Time Clock object
 
-long start_hour_1=6, start_minute_1=20, start_second_1=0, end_hour_1=7, end_minute_1=40, end_second_1=0, start_time_1_seconds, end_time_1_seconds;
+uint8_t start_hour_1=6, start_minute_1=20, start_second_1=0, end_hour_1=7, end_minute_1=30, end_second_1=0, start_time_1_seconds, end_time_1_seconds;
 //long start_hour_1=7, start_minute_1=54, start_second_1=0, end_hour_1=7, end_minute_1=56, end_second_1=0, start_time_1_seconds, end_time_1_seconds;
-long start_hour_2=18, start_minute_2=40, start_second_2=0, end_hour_2=19, end_minute_2=40, end_second_2=0, start_time_2_seconds, end_time_2_seconds;
+uint8_t start_hour_2=18, start_minute_2=50, start_second_2=0, end_hour_2=19, end_minute_2=50, end_second_2=0, start_time_2_seconds, end_time_2_seconds;
 
 int current_second = 0;  // Used to check frequency of time update on LCD
 long now_seconds, end_seconds, remaining_seconds, change_time=0;  // now in seconds since 00:00:00, end time in seconds, count down of remain seconds
@@ -40,14 +40,14 @@ static uint8_t hue = default_hue;
 static uint8_t hue_step = 24;
 static uint8_t tail = 180;
 static int step = -1;
-static int pos = NUM_LEDS;
-static int turned_on_leds = 0;
-static double wait_time = 2;
+static uint8_t pos = NUM_LEDS;
+static uint8_t turned_on_leds = 0;
+static uint8_t wait_time = 2;
 char daysOfTheWeek[7][12] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
 bool red_button_pressed=0;
 bool green_button_pressed=0;
 bool blue_button_pressed=0;
-int sound_level=0;
+int sound_level=0, sound_limit=740;
 
 RunningMedian SoundLevelSamples = RunningMedian(5);
 
@@ -492,33 +492,24 @@ case Demo:
   EVERY_N_MILLISECONDS( 20 ) { gHue++; } // slowly cycle the "base color" through the rainbow
   EVERY_N_SECONDS( 10 ) { nextPattern(); } // change patterns periodically
 
-     if(blue_button_On){condition=Idle;break;}
+     if(green_button_On){condition=Idle;break;}
      break;
      
   case Noisometer:
-     //Serial.println("Noisometer");
-     /*lcd.clear();
-     lcd.setCursor(0,0);
-     lcd.println("Noisometer         ");
-     lcd.setCursor(0,1);
-     lcd.println("TBD                ");     
-     delay(2000);
-     condition=Idle;  
-     */   
-
      sound_level=analogRead(mic_analog);
      SoundLevelSamples.add(sound_level);
      Serial.println(SoundLevelSamples.getHighest());
-     if (SoundLevelSamples.getHighest()>640){
+     if (SoundLevelSamples.getHighest()>sound_limit){
        condition=QuietPlease;
        now = RTC.now();
        change_time=long(now.hour())*3600+long(now.minute())*60+long(now.second());
        SoundLevelSamples.clear();
-       
      }
      delay(50);
 
-     if(blue_button_On){condition=Idle;break;}
+     if(green_button_On){condition=Demo;break;}
+     if(red_button_On){condition=Count_down_time;break;}
+     
      break;
      
 case QuietPlease:
@@ -546,8 +537,8 @@ case QuietPlease:
 
      // do some periodic updates
      EVERY_N_MILLISECONDS( 20 ) { gHue++; } // slowly cycle the "base color" through the rainbow
-     //EVERY_N_SECONDS( 5 ) { Beep(500,440,0); } // Beep periodically
-     if (now_seconds>change_time+10){
+     EVERY_N_SECONDS( 1 ) { Beep(100,440,0); } // Beep periodically
+     if (now_seconds>change_time+5){
        condition=Noisometer;
        alloff();
        turned_on_leds = 0;
@@ -559,7 +550,8 @@ case QuietPlease:
        lcd.println("Noisometer         "); 
      }
 
-     if(blue_button_On){condition=Idle;break;}
+     if(green_button_On){condition=Demo;break;}
+     if(red_button_On){condition=Count_down_time;break;}
      break;
 
      

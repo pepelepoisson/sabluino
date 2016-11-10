@@ -22,9 +22,9 @@ CRGB leds[NUM_LEDS];  // Define the array of leds
 LiquidCrystal_I2C lcd(0x3F, 2, 1, 0, 4, 5, 6, 7, 3, POSITIVE);  // Set the LCD I2C address
 RTC_DS1307 RTC; // define the Real Time Clock object
 
-uint8_t start_hour_1=6, start_minute_1=20, start_second_1=0, end_hour_1=7, end_minute_1=30, end_second_1=0, start_time_1_seconds, end_time_1_seconds;
+long start_hour_1=6, start_minute_1=20, end_hour_1=7, end_minute_1=30, start_time_1_seconds, end_time_1_seconds;
 //long start_hour_1=7, start_minute_1=54, start_second_1=0, end_hour_1=7, end_minute_1=56, end_second_1=0, start_time_1_seconds, end_time_1_seconds;
-uint8_t start_hour_2=18, start_minute_2=50, start_second_2=0, end_hour_2=19, end_minute_2=50, end_second_2=0, start_time_2_seconds, end_time_2_seconds;
+long start_hour_2=18, start_minute_2=50, end_hour_2=19, end_minute_2=50, start_time_2_seconds, end_time_2_seconds;
 
 int current_second = 0;  // Used to check frequency of time update on LCD
 long now_seconds, end_seconds, remaining_seconds, change_time=0;  // now in seconds since 00:00:00, end time in seconds, count down of remain seconds
@@ -47,7 +47,8 @@ char daysOfTheWeek[7][12] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
 bool red_button_pressed=0;
 bool green_button_pressed=0;
 bool blue_button_pressed=0;
-int sound_level=0, sound_limit=740;
+int sound_level=600, sound_limit=750;
+uint8_t mapped_sound_level=0;
 
 RunningMedian SoundLevelSamples = RunningMedian(5);
 
@@ -72,27 +73,30 @@ void setup(void)
   lcd.print("*** Laketanou **");
   delay(1000);
  
-  lcd.setCursor(0,0);
+  /*lcd.setCursor(0,0);
   for (char k=0;k<16;k++)
   {
     lcd.scrollDisplayLeft();
     delay(200);
   }
+  */
 
   Wire.begin();  // connect to RTC
-  
+
   // following line sets the RTC to the date & time this sketch was compiled
-  RTC.adjust(DateTime(F(__DATE__), F(__TIME__)));
-  
+  //RTC.adjust(DateTime(F(__DATE__), F(__TIME__)));
+    
   FastLED.addLeds<WS2812B, DATA_PIN, GRB>(leds, NUM_LEDS);
   FastLED.setBrightness(BRIGHTNESS);    
 
-  start_time_1_seconds=start_hour_1*3600+start_minute_1*60+start_second_1;
-  Serial.println(start_time_1_seconds);
-  end_time_1_seconds=end_hour_1*3600+end_minute_1*60+end_second_1;
-  Serial.println(end_time_1_seconds);
-  start_time_2_seconds=start_hour_2*3600+start_minute_2*60+start_second_2;
-  end_time_2_seconds=end_hour_2*3600+end_minute_2*60+end_second_2;  
+  start_time_1_seconds=start_hour_1*3600+start_minute_1*60;
+  //Serial.println(start_time_1_seconds);
+  end_time_1_seconds=end_hour_1*3600+end_minute_1*60;
+  //Serial.println(end_time_1_seconds);
+  start_time_2_seconds=start_hour_2*3600+start_minute_2*60;
+  end_time_2_seconds=end_hour_2*3600+end_minute_2*60;  
+
+  alloff();
 }
 
 // List of patterns to cycle through.  Each is defined as a separate function below.
@@ -222,7 +226,7 @@ void juggle() {
   }
 }
 
-enum {Idle,Count_down_time,Starting,Count_down,Timer,Ending,Demo,Noisometer,QuietPlease,Adjust_RTC} condition=Idle;
+enum {Idle,Count_down_time,Starting,Count_down,Timer,Ending,Demo,Noisometer,QuietPlease,HoldOn} condition=Idle;
 
 void loop(void)
 {
@@ -390,7 +394,7 @@ case Count_down:
       }
       else {
         // Victory melody
-        Beep(3000,int(440.0*pow(2.0,float(-27.0/12.0))),1);
+        Beep(400,int(440.0*pow(2.0,float(-27.0/12.0))),1);
         for (int i=-27;i<=27;i++){
           Beep(200,int(440.0*pow(2.0,float(i/12.0))),1);
         }
@@ -492,14 +496,28 @@ case Demo:
   EVERY_N_MILLISECONDS( 20 ) { gHue++; } // slowly cycle the "base color" through the rainbow
   EVERY_N_SECONDS( 10 ) { nextPattern(); } // change patterns periodically
 
-     if(green_button_On){condition=Idle;break;}
+     if(red_button_On){condition=HoldOn;break;}
      break;
      
   case Noisometer:
      sound_level=analogRead(mic_analog);
+     sound_level=max(501,sound_level);
      SoundLevelSamples.add(sound_level);
-     Serial.println(SoundLevelSamples.getHighest());
-     if (SoundLevelSamples.getHighest()>sound_limit){
+     Serial.print(sound_level);
+     Serial.print(" ");
+     //mapped_sound_level=map(sound_level,500,sound_limit,0,NUM_LEDS);
+     mapped_sound_level=map(SoundLevelSamples.getAverage(),500,sound_limit,0,NUM_LEDS);
+     Serial.println(mapped_sound_level);
+     hue=100;
+     for (int i=0;i<=mapped_sound_level;i++){
+         if(i>50){hue=50;}
+         if(i>90){hue=0;}
+         leds[i] = CHSV(hue, 255, 255);
+     }
+     FastLED.show();
+     fadeall();
+     
+     if (SoundLevelSamples.getAverage()>sound_limit){
        condition=QuietPlease;
        now = RTC.now();
        change_time=long(now.hour())*3600+long(now.minute())*60+long(now.second());
@@ -537,7 +555,7 @@ case QuietPlease:
 
      // do some periodic updates
      EVERY_N_MILLISECONDS( 20 ) { gHue++; } // slowly cycle the "base color" through the rainbow
-     EVERY_N_SECONDS( 1 ) { Beep(100,440,0); } // Beep periodically
+     EVERY_N_SECONDS( 1 ) { Beep(50,440,0); } // Beep periodically
      if (now_seconds>change_time+5){
        condition=Noisometer;
        alloff();
@@ -553,11 +571,12 @@ case QuietPlease:
      if(green_button_On){condition=Demo;break;}
      if(red_button_On){condition=Count_down_time;break;}
      break;
-
      
-  case Adjust_RTC:
-     Serial.println("Adjust_RTC");
-     break;
+case HoldOn:
+    delay(500);
+    alloff();
+    condition=Idle;
+    break;
   }
 }
 
